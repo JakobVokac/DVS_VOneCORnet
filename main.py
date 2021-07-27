@@ -1,13 +1,13 @@
+from dataset import VoxelGridDataset
 from models import CORnet_Z_cifar10dvs
 import numpy as np
 import torch
-from data import CIFAR10DVSDataset
-from torchvision.io import read_image
 from torch.utils.data import DataLoader
 from torch.utils.data import SubsetRandomSampler
+from tqdm import tqdm
 
-load_model = True
-model_path = "c:/Users/Jakob/Projects/v2e_vonenet/main/model_save_state/model.pth"
+load_model = False
+model_path = "c:/Users/Jakob/Projects/v2e_vonenet/main/model_save_state/model2.pth"
 root_path = "d:/datasets/cifar10dvs/"
 
 def run():
@@ -16,8 +16,12 @@ def run():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-    dataset = CIFAR10DVSDataset(root_path)
-
+    #dataset = CIFAR10DVSDataset(root_path)
+    # dataset = CIFAR10DVS( "d:/Datasets/cifar10dvs/",transform=Compose(
+    #     [CropTime(0,1e+6), ToVoxelGrid(10)]
+    # ))
+    dataset = VoxelGridDataset(root_path + "train/")
+    
     batch_size = 32
     validation_split = .1
     shuffle_dataset = True
@@ -64,7 +68,8 @@ def run():
         
         model.train()
         train_accuracy = torch.tensor(0).to(device)
-        for batch, labels in train_loader:
+        for batch, labels in tqdm(train_loader):
+
             batch, labels = batch.to(device, dtype=torch.float32), labels.to(device, dtype=torch.int64)
             
             pred = model(batch)
@@ -78,11 +83,12 @@ def run():
             
         train_accuracy = train_accuracy.cpu().numpy()
         print("Training Accuracy: ", train_accuracy, len(train_loader)*batch_size, dataset_size, train_accuracy/(dataset_size - split))
+        model.eval()
         if (epoch % 10 == 0):
             accuracy = torch.tensor(0).to(device)
             # total_loss = torch.tensor(0).to(device)
             for batch, labels in validation_loader:
-                
+               
                 batch, labels = batch.to(device, dtype=torch.float32), labels.to(device, dtype=torch.int64)
 
                 pred = model(batch)
@@ -92,7 +98,7 @@ def run():
                 # total_loss = total_loss + loss_ce
                 
             accuracy = accuracy.cpu().numpy()
-            print("Validation Accuracy: ", len(validation_loader)*batch_size, split, train_accuracy/split)
+            print("Validation Accuracy: ", len(validation_loader)*batch_size, split, accuracy/split)
             
             torch.save({
                         'epoch': epoch,
