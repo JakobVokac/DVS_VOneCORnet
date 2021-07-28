@@ -1,13 +1,13 @@
 from dataset import VoxelGridDataset
-from models import CORnet_Z_cifar10dvs
+from models import CORnet_Z_cifar10dvs, VOneCORnet_Z_cifar10dvs
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import SubsetRandomSampler
 from tqdm import tqdm
 
-load_model = False
-model_path = "c:/Users/Jakob/Projects/v2e_vonenet/main/model_save_state/model2.pth"
+load_model = True
+model_path = "c:/Users/Jakob/Projects/v2e_vonenet/main/model_save_state/modelvone.pth"
 root_path = "d:/datasets/cifar10dvs/"
 
 def run():
@@ -46,15 +46,14 @@ def run():
                                    sampler=valid_sampler,num_workers=4,pin_memory=True)
 
 
-    model = CORnet_Z_cifar10dvs().to(device)
+    model = VOneCORnet_Z_cifar10dvs().to(device)
 
     lr = 1e-2
     loss = torch.nn.CrossEntropyLoss()
     opt = torch.optim.Adagrad(model.parameters(), lr=lr)
 
-    n_epochs = 1000
+    n_epochs = 100
     s_epoch = 0
-    #Total data is roughly 16GB, my gpu has 8GB memory, so im splitting up the loading to 4 chunks
     if load_model:
         checkpoint = torch.load(model_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -63,11 +62,14 @@ def run():
         loss = checkpoint['loss']
         print("Model loaded from epoch: ", s_epoch)
         
+    old_accuracy = 0
+    val_acc_counter = 0
     for epoch in np.arange(s_epoch+1, n_epochs):
         print("Epoch: ", epoch)
         
         model.train()
         train_accuracy = torch.tensor(0).to(device)
+        
         for batch, labels in tqdm(train_loader):
 
             batch, labels = batch.to(device, dtype=torch.float32), labels.to(device, dtype=torch.int64)
@@ -82,9 +84,11 @@ def run():
             train_accuracy = train_accuracy + batch_acc
             
         train_accuracy = train_accuracy.cpu().numpy()
-        print("Training Accuracy: ", train_accuracy, len(train_loader)*batch_size, dataset_size, train_accuracy/(dataset_size - split))
+        train_accuracy_percentage = train_accuracy/(dataset_size - split)
+        print("Training Accuracy: ", train_accuracy, len(train_loader)*batch_size, dataset_size, train_accuracy_percentage)
+        
         model.eval()
-        if (epoch % 10 == 0):
+        if (epoch % 4 == 0):
             accuracy = torch.tensor(0).to(device)
             # total_loss = torch.tensor(0).to(device)
             for batch, labels in validation_loader:
@@ -108,6 +112,18 @@ def run():
                         }, 
                     model_path)
             print("Model saved at epoch: ", epoch)
+            if(accuracy < old_accuracy):
+                val_acc_counter += 1
+            old_accuracy = accuracy
+            
+        if(train_accuracy_percentage > 0.999):
+            print("Training Accuracy maximized")
+            break
+        if(val_acc_counter == 2):
+            print("Validation Accuracy maximized")
+            break
+            
+
 
 if __name__ == '__main__':
     torch.multiprocessing.freeze_support()
