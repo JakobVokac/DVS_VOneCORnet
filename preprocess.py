@@ -17,13 +17,13 @@ from tqdm import tqdm
 ###
 
 stop_time = 1e+6
-slices = 10
+slices = 3
 split = .9
-root_path = "d:/Datasets/cifar10dvs/"
+root_path = "d:/Datasets/cifar10dvs3slice/"
 classes = ["airplane","automobile","bird","cat","deer","dog","frog","horse","ship","truck"]
 
 
-# # Make new folders and move the files
+# Make new folders and move the files
 # os.makedirs(root_path + "train")
 # [os.makedirs(root_path + "train/" + img_class) for img_class in classes]
 # os.makedirs(root_path + "test")
@@ -39,24 +39,24 @@ classes = ["airplane","automobile","bird","cat","deer","dog","frog","horse","shi
 #     for file in folder[int(split*folder_len):]:
 #         os.rename(os.path.join(root_path, img_class, file), os.path.join(root_path, "test", img_class, file))
         
-# # Turn events to voxel grids
-# train_data = CIFAR10DVS(os.path.join(root_path, "train/"),transform=Compose(
-#         [CropTime(0,stop_time), ToVoxelGrid(slices)]
-#     ))
+# Turn events to voxel grids
+train_data = CIFAR10DVS(os.path.join(root_path, "train/"),transform=Compose(
+        [CropTime(0,stop_time), ToVoxelGrid(slices)]
+    ))
 
-# test_data = CIFAR10DVS(os.path.join(root_path, "test/"),transform=Compose(
-#         [CropTime(0,stop_time), ToVoxelGrid(slices)]
-#     ))
+test_data = CIFAR10DVS(os.path.join(root_path, "test/"),transform=Compose(
+        [CropTime(0,stop_time), ToVoxelGrid(slices)]
+    ))
 
-# for sample in tqdm(train_data):
-#     events, target, filepath = sample
-#     new_filepath = filepath[:-6] + '.npz'
-#     np.savez(new_filepath, events)
+for sample in tqdm(train_data):
+    events, target, filepath = sample
+    new_filepath = filepath[:-6] + '.npz'
+    np.savez(new_filepath, events)
     
-# for sample in tqdm(test_data):
-#     events, target, filepath = sample
-#     new_filepath = filepath[:-6] + '.npz'
-#     np.savez(new_filepath, events)
+for sample in tqdm(test_data):
+    events, target, filepath = sample
+    new_filepath = filepath[:-6] + '.npz'
+    np.savez(new_filepath, events)
     
 
 # Make new training samples and turn them to voxel grids

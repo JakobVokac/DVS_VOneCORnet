@@ -1,26 +1,39 @@
-from dataset import VoxelGridDataset
-from models import CORnet_Z_cifar10dvs, VOneCORnet_Z_cifar10dvs
+from dataset import VoxelGridDataset, CIFAR10, CIFAR10DVS, CropTime
+from models import CORnet_Z_cifar10dvs, VOneCORnet_Z_cifar10dvs, CORnet_S, VOneCORnet_S
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from torch.utils.data import SubsetRandomSampler
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import os
+from torchvision import transforms
+from tonic.transforms import ToVoxelGrid, Compose
 
-load_model = True
-model_path = "c:/Users/Jakob/Projects/v2e_vonenet/main/model_save_state/modelvone.pth"
-root_path = "d:/datasets/cifar10dvs/"
+load_model = False
+run_name = "cornets_cifar10dvs_snn_avgpool_swapped_layers"
+root_path = "d:/datasets/cifar10dvs/train/"
+summary_path = "c:/Users/Jakob/Projects/v2e_vonenet/main/runs/"
+
 
 def run():
-    
-    
+    current_summary_path = os.path.join(summary_path, run_name)
+    os.makedirs(current_summary_path,exist_ok=True)
+    writer = SummaryWriter(log_dir=current_summary_path,comment="CORnet-Z, CIFAR10DVS, 10 slice, average pooling, swapped layers")
+    model_path = os.path.join(current_summary_path, run_name + '.pth')
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-    #dataset = CIFAR10DVSDataset(root_path)
+    # dataset = CIFAR10DVSDataset(root_path)
     # dataset = CIFAR10DVS( "d:/Datasets/cifar10dvs/",transform=Compose(
     #     [CropTime(0,1e+6), ToVoxelGrid(10)]
     # ))
-    dataset = VoxelGridDataset(root_path + "train/")
+    
+    dataset = VoxelGridDataset(root_path)
+    # transform = transforms.Compose(
+    # [transforms.ToTensor(),
+    #  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    # dataset = CIFAR10(root_path,transform=transform)
     
     batch_size = 32
     validation_split = .1
@@ -46,7 +59,7 @@ def run():
                                    sampler=valid_sampler,num_workers=4,pin_memory=True)
 
 
-    model = VOneCORnet_Z_cifar10dvs().to(device)
+    model = CORnet_S(10).to(device)
 
     lr = 1e-2
     loss = torch.nn.CrossEntropyLoss()
@@ -64,12 +77,13 @@ def run():
         
     old_accuracy = 0
     val_acc_counter = 0
+    err_margin = 0.001
     for epoch in np.arange(s_epoch+1, n_epochs):
         print("Epoch: ", epoch)
         
         model.train()
         train_accuracy = torch.tensor(0).to(device)
-        
+        train_loss = torch.tensor(0,dtype=torch.float32).to(device)
         for batch, labels in tqdm(train_loader):
 
             batch, labels = batch.to(device, dtype=torch.float32), labels.to(device, dtype=torch.int64)
@@ -78,6 +92,7 @@ def run():
             
             opt.zero_grad()
             out = loss(pred,labels)
+            train_loss = train_loss + out
             out.backward()
             opt.step()
             batch_acc = torch.sum(torch.eq(torch.argmax(pred,dim=1), labels))
@@ -86,43 +101,42 @@ def run():
         train_accuracy = train_accuracy.cpu().numpy()
         train_accuracy_percentage = train_accuracy/(dataset_size - split)
         print("Training Accuracy: ", train_accuracy, len(train_loader)*batch_size, dataset_size, train_accuracy_percentage)
-        
+        writer.add_scalar("Loss/train", train_loss, epoch)
+        writer.add_scalar("Accuracy/train", train_accuracy_percentage, epoch)
         model.eval()
-        if (epoch % 4 == 0):
-            accuracy = torch.tensor(0).to(device)
-            # total_loss = torch.tensor(0).to(device)
-            for batch, labels in validation_loader:
-               
-                batch, labels = batch.to(device, dtype=torch.float32), labels.to(device, dtype=torch.int64)
+            
+        accuracy = torch.tensor(0).to(device)
+        # total_loss = torch.tensor(0).to(device)
+        for batch, labels in validation_loader:
+            
+            batch, labels = batch.to(device, dtype=torch.float32), labels.to(device, dtype=torch.int64)
 
-                pred = model(batch)
-                # loss_ce = loss(pred,labels)
-                batch_acc = torch.sum(torch.eq(torch.argmax(pred,dim=1), labels))
-                accuracy = accuracy + batch_acc
-                # total_loss = total_loss + loss_ce
-                
-            accuracy = accuracy.cpu().numpy()
-            print("Validation Accuracy: ", len(validation_loader)*batch_size, split, accuracy/split)
+            pred = model(batch)
+            # loss_ce = loss(pred,labels)
+            batch_acc = torch.sum(torch.eq(torch.argmax(pred,dim=1), labels))
+            accuracy = accuracy + batch_acc
+            # total_loss = total_loss + loss_ce
             
-            torch.save({
-                        'epoch': epoch,
-                        'model_state_dict': model.state_dict(),
-                        'optimizer_state_dict': opt.state_dict(),
-                        'loss': loss,
-                        }, 
-                    model_path)
-            print("Model saved at epoch: ", epoch)
-            if(accuracy < old_accuracy):
-                val_acc_counter += 1
-            old_accuracy = accuracy
-            
-        if(train_accuracy_percentage > 0.999):
-            print("Training Accuracy maximized")
-            break
-        if(val_acc_counter == 2):
-            print("Validation Accuracy maximized")
-            break
-            
+        accuracy = accuracy.cpu().numpy()/split
+        print("Validation Accuracy: ", len(validation_loader)*batch_size, split, accuracy)
+        writer.add_scalar("Accuracy/validation", accuracy, epoch)
+        if accuracy <= old_accuracy + err_margin:
+            val_acc_counter += 1
+        else:
+            val_acc_counter = 0    
+        old_accuracy = accuracy
+        
+        torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': opt.state_dict(),
+                    'loss': loss,
+                    }, 
+                model_path)
+        writer.flush()
+        print("Model saved at epoch: ", epoch)
+        if val_acc_counter == 3:
+            break;
 
 
 if __name__ == '__main__':

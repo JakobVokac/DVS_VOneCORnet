@@ -1,9 +1,9 @@
 import os
 import numpy as np
-from tonic.datasets.dataset import Dataset
+from tonic.datasets.dataset import Dataset as TonicDataset
 from aedat_loader import loadaerdat
 import itertools
-
+from torch.utils.data import Dataset
 
 class CropTime:
     """Crops events with timestamps outside a specified time. This class is made to work as a Tonic Transform.
@@ -27,7 +27,7 @@ class CropTime:
 
 
 
-class CIFAR10DVS(Dataset):
+class CIFAR10DVS(TonicDataset):
 
     sensor_size = (128, 128)
     ordering = "txyp"
@@ -59,7 +59,7 @@ class CIFAR10DVS(Dataset):
     def __len__(self):
         return self.len
 
-class VoxelGridDataset(Dataset):
+class VoxelGridDataset(TonicDataset):
     
     def __init__(
         self, base_path, save_to = "./", download=False, transform=None, target_transform=None
@@ -82,3 +82,27 @@ class VoxelGridDataset(Dataset):
 
     def __len__(self):
         return self.len
+
+class CIFAR10(Dataset):
+    
+    def __init__(self, root_dir, transform=None):
+        
+        self.root_dir = root_dir
+        self.transform = transform
+        self.files = os.listdir(root_dir)
+        self.files.remove("y_train.npz")
+        self.labels = np.load(os.path.join(root_dir,"y_train.npz"))["arr_0"]
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        
+        sample = np.load(os.path.join(self.root_dir, self.files[idx]))["arr_0"]
+        sample = np.transpose(sample, axes=[1,2,0])
+        target = self.labels[idx]
+        
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample, target
